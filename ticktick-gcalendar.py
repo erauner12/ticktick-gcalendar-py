@@ -14,10 +14,10 @@ from googleapiclient.discovery import build
 
 from account_info import GOOGLE, GOOGLE_INFO, TICKTICK, TICKTICK_INFO  # account information
 from helper import load_dict_from_file, save_dict_to_file, BiDict
-from ticktick_py.ticktick.api import TickTickClient  # Main Interface
-from ticktick_py.ticktick.oauth2 import OAuth2  # OAuth2 Manager
+from ticktick.api import TickTickClient
+from ticktick.oauth2 import OAuth2  # OAuth2 Manager
 
-DEBUG = False
+DEBUG = True
 
 
 def do_on_exception(e: Exception):
@@ -178,7 +178,7 @@ class GCalendarApi(Api):
             if renew:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     credentials['credentials'], credentials['SCOPES'])
-                creds = flow.run_local_server(port=0)
+                creds = flow.run_local_server(port=8080)
             elif creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
@@ -412,11 +412,23 @@ class TickTickDiff(Diff):
                 #     start += timedelta(days=1)
                 #     end += timedelta(days=1)
 
+                project_id = task.get('projectId', '')
+                ticktick_link = f'<a href="https://ticktick.com/webapp/#p/{project_id}/tasks/{task["id"]}">{task["id"]}</a>'
+                project_id = task.get('projectId', '')
+                ticktick_link = f'<a href="https://ticktick.com/webapp/#p/{project_id}/tasks/{task["id"]}">{task["id"]}</a>'
+                # # Replace with your actual domain or path for the redirect
+                # # Example: https://tt.erauner.synology.me/drafts_redirect.html
+                # drafts_redirect_url = f'https://tt.erauner.synology.me/drafts_redirect.html?task_id={task["id"]}'
+                # drafts_link = f'<a href="{drafts_redirect_url}">ticktick_{task["id"]} (Drafts)</a>'
+                # # Example: https://tt.erauner.synology.me/drafts_redirect.html
+                # drafts_redirect_url = f'https://tt.erauner.synology.me/drafts_redirect.html?task_id={task["id"]}'
+                # drafts_link = f'<a href="{drafts_redirect_url}">ticktick_{task["id"]} (Drafts)</a>'
+                description_html = f'{ticktick_link}'
                 task_gcal = gcalendar_api.build_event(
                     summary=task['title'],
                     start=start.date() if all_day else start,
                     end=end.date() if all_day else end,
-                    description=task.get('content', None),
+                    description=description_html,
                     event=task_gcal
                 )
                 gcalendar_api.update(task_gcal)
@@ -439,11 +451,17 @@ class TickTickDiff(Diff):
                 #     start += timedelta(days=1)
                 #     end += timedelta(days=1)
 
+                project_id = task.get('projectId', '')
+                ticktick_link = f'<a href="https://ticktick.com/webapp/#p/{project_id}/tasks/{task["id"]}">{task["id"]}</a>'
+                project_id = task.get('projectId', '')
+                ticktick_link = f'<a href="https://ticktick.com/webapp/#p/{project_id}/tasks/{task["id"]}">{task["id"]}</a>'
+                drafts_link = f'<a href="drafts://x-callback-url/open?title=ticktick_{task["id"]}&allowCreate=true&action=Todoist%20Source">ticktick_{task["id"]} (Drafts)</a>'
+                description_html = f'{ticktick_link}<br/>{drafts_link}'
                 added_id = gcalendar_api.insert(gcalendar_api.build_event(
                     summary=task['title'],
                     start=start.date() if all_day else start,
                     end=end.date() if all_day else end,
-                    description=task.get('content', None)
+                    description=description_html
                 ))['id']
                 self.api.change_tasks(task)
                 bidict_tick_gcalendar[task['id']] = added_id
@@ -549,8 +567,13 @@ class GCalendarDiff(Diff):
             task = self.deleted.pop()
             print(f"Delete {self.__class__}: {task.title}")
             try:
-                task_tick_id = bidict_tick_gcalendar.get_inverse(task['id'])[0]
+                ticktick_ids = bidict_tick_gcalendar.inverse.get(task['id'], [])
+                if not ticktick_ids:
+                    # There's no mapped TickTick ID for this GCalendar event
+                    self.api.change_tasks(task, delete=True)
+                    continue
 
+                task_tick_id = ticktick_ids[0]
                 task_tick = tick_tasks[task_tick_id]
                 ticktick_api.complete(task_tick)
                 self.api.change_tasks(task, delete=True)
